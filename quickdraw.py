@@ -6,7 +6,7 @@ from pathlib import Path
 points_count = 32
 target_size = 200
 
-data_folder = Path(__file__).parent
+data_folder = Path(__file__).parent / "Quickdraw"
 output_file = "spell_training_data.csv"
 
 datasets = {
@@ -107,7 +107,7 @@ def main():
     [f"x{i}" for i in range(points_count)]
     + [f"y{i}" for i in range(points_count)]
   )
-  output_path = data_folder / output_file
+  output_path = Path(__file__).parent / output_file
 
   with output_path.open("w", newline="", encoding="utf-8") as csv_file:
     writer = csv.writer(csv_file)
