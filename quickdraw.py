@@ -5,9 +5,10 @@ from pathlib import Path
 #setup stuff
 
 points = 32
-target size = 200
+target_size = 200
 
-data_folder = Path("quickdraw_data")
+data_folder = Path(__file__).parent
+output_file = "spell_training_data.csv"
 
 datasets = {
   "circle": "full_simplified_circle.ndjson",
@@ -35,9 +36,9 @@ def resample(points, count = 32):
     distances.append(distances[-1] + distance)
 
   total_length = distances[-1]
-  if total_length==0
+  if total_length==0:
     return None
-  result[]
+  result = []
   segement = 0
   
   for i in range(count):
