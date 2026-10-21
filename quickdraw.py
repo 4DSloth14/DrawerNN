@@ -39,28 +39,27 @@ def resample(points, count = 32):
     return None
   result[]
   segement = 0
-
+  
   for i in range(count):
-      target = total_length * i / (count -1)
-      while ( segement < len(segment_distances) - 1 and distances [ segment + 1] < target):
+    target = total_length * i / (count -1)
+    while ( segement < len(segment_distances) - 1 and distances [ segment + 1] < target):
              segement += 1
 
-      start_distance = distances[segement]
-      end_distance = distances[segment + 1]
+    start_distance = distances[segement]
+    end_distance = distances[segment + 1]
 
-      if end_distance == start_distance:
+    if end_distance == start_distance:
           fraction = 0
+    else:
+          fraction = ((target-start_distance)/(end_distance - start_distance))
 
-      else:
-          fraction = (target-start_distance)/(end_distance - start_distance)
+    x1,y1 = points[segment]
+    x2, y2 = points[segement + 1]
 
-      x1,y1 = points[segment]
-      x2, y2 = points[segement + 1]
+    x = x1 + fraction * (x2-y1)
+    y=y1 + fraction * (y2 - y1)
 
-      x = x1 + fraction * (x2-y1)
-      y=y1 + fraction * (y2 - y1)
-
-      result.append((x,y))
+    result.append((x,y))
 
   return result
 
