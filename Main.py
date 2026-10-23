@@ -9,21 +9,21 @@ import numpy as np
 
 # Each drawing is represented by 64 numbers: 32 x-coordinates followed by
 # 32 y-coordinates. The output class numbers follow this list's order.
-hidden_layers = [64, 32]
+hidden_layers = [128, 64]
 confidence_threshold = 0.8
 input_size = 64
 output_size = 5
 
 # These are the default training settings; you can override them when creating
 # the network or calling fit().
-epochs = 2500
-train_until_percent = 95
-learning_rate = 0.001
+epochs = 5000
+train_until_percent = None
+learning_rate = 0.0005
 batch_size = 64
 random_seed = 42
-early_stopping_patience = 60
+early_stopping_patience = 100
 minimum_loss_improvement = 1e-4
-log_every = 25
+log_every = 50
 
 # Class IDs follow this order; drawings from other datasets use the final class.
 labels = ["circle", "triangle", "lightning", "star", "none"]
