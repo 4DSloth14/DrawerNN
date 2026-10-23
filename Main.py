@@ -405,7 +405,7 @@ def split_by_class(X, y, validation_fraction=0.2, seed=42):
 
 def parse_input(text):
     """Parse 64 pipe-separated drawing coordinates into a network input row."""
-    values = text.split("|")
+    values = text.strip().removeprefix("|").split("|")
     if len(values) != input_size:
         raise ValueError(
             f"Expected exactly {input_size} values separated by '|'; "
