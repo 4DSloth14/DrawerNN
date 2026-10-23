@@ -1,3 +1,4 @@
+import argparse
 import csv
 from pathlib import Path
 
@@ -25,6 +26,7 @@ log_every = 25
 # Class number 0 means circle, 1 slash, 2 lightning, and 3 star.
 labels = ["circle", "slash", "lightning", "star"]
 training_data_file = Path(__file__).with_name("spell_training_data.csv")
+model_file = Path(__file__).with_name("spell_model.npz")
 
 
 class NeuralNetwork:
@@ -138,6 +140,49 @@ class NeuralNetwork:
     def predict_proba(self, X):
         # Return one probability per class for every drawing.
         return self.forward(X)[-1]
+
+    def save(self, path=model_file):
+        """Save the network architecture, weights, and biases to an NPZ file."""
+        arrays = {"layer_sizes": np.asarray(self.layer_sizes, dtype=np.int64)}
+        for i, (weight, bias) in enumerate(zip(self.weights, self.biases)):
+            arrays[f"weights_{i}"] = weight
+            arrays[f"biases_{i}"] = bias
+
+        with Path(path).open("wb") as model_data:
+            np.savez(model_data, **arrays)
+
+    @classmethod
+    def load(cls, path=model_file):
+        """Load a saved network after checking its architecture and parameters."""
+        with np.load(path, allow_pickle=False) as model_data:
+            layer_sizes = model_data["layer_sizes"]
+            if (
+                layer_sizes.ndim != 1
+                or len(layer_sizes) < 3
+                or not np.issubdtype(layer_sizes.dtype, np.integer)
+                or layer_sizes[0] != input_size
+                or layer_sizes[-1] != output_size
+                or np.any(layer_sizes[1:-1] <= 0)
+            ):
+                raise ValueError(f"{path} contains an invalid network architecture.")
+
+            model = cls(layer_sizes[1:-1].tolist())
+            for i in range(len(model.weights)):
+                weight = np.asarray(model_data[f"weights_{i}"], dtype=np.float32)
+                bias = np.asarray(model_data[f"biases_{i}"], dtype=np.float32)
+                if (
+                    weight.shape != model.weights[i].shape
+                    or bias.shape != model.biases[i].shape
+                    or not np.all(np.isfinite(weight))
+                    or not np.all(np.isfinite(bias))
+                ):
+                    raise ValueError(
+                        f"{path} contains invalid parameters for layer {i}."
+                    )
+                model.weights[i] = weight.copy()
+                model.biases[i] = bias.copy()
+
+        return model
 
     def predict(self, X):
         # The most likely class is the one with the highest probability.
@@ -358,8 +403,28 @@ def split_by_class(X, y, validation_fraction=0.2, seed=42):
     )
 
 
-def main():
-    # Running Main.py loads the prepared drawings and starts training.
+def parse_input(text):
+    """Parse 64 pipe-separated drawing coordinates into a network input row."""
+    values = text.split("|")
+    if len(values) != input_size:
+        raise ValueError(
+            f"Expected exactly {input_size} values separated by '|'; "
+            f"received {len(values)}."
+        )
+
+    try:
+        drawing = np.asarray([value.strip() for value in values], dtype=np.float32)
+    except ValueError as error:
+        raise ValueError("Every input must be a number.") from error
+
+    if not np.all(np.isfinite(drawing)):
+        raise ValueError("Inputs must be finite numbers.")
+
+    # Match the coordinate scaling used when loading the training CSV.
+    return (drawing / 100.0).reshape(1, input_size)
+
+
+def train_and_save_model():
     X, y = load_training_data()
     train_X, train_y, validation_X, validation_y = split_by_class(X, y)
 
@@ -375,6 +440,51 @@ def main():
         validation_data=(validation_X, validation_y),
         seed=random_seed + 1,
     )
+    model.save()
+    print(f"Saved trained model to {model_file}.")
+
+
+def predict_from_prompt():
+    if not model_file.exists():
+        raise FileNotFoundError(
+            f"No saved model found at {model_file}. "
+            "Train one first with 'python Main.py --train'."
+        )
+
+    model = NeuralNetwork.load()
+    while True:
+        text = input(
+            f"Paste {input_size} drawing coordinates separated by '|', "
+            "then press Enter:\n"
+        )
+        try:
+            drawing = parse_input(text)
+        except ValueError as error:
+            print(f"Invalid drawing input: {error}")
+            continue
+        break
+
+    probabilities = model.predict_proba(drawing)[0]
+    predicted_class = int(np.argmax(probabilities))
+    print(f"Prediction: {labels[predicted_class]}")
+    print(f"Confidence: {probabilities[predicted_class]:.2%}")
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Train the drawing classifier or predict one pasted drawing."
+    )
+    parser.add_argument(
+        "--train",
+        action="store_true",
+        help="train the network and save its weights for later predictions",
+    )
+    args = parser.parse_args()
+
+    if args.train:
+        train_and_save_model()
+    else:
+        predict_from_prompt()
 
 
 if __name__ == "__main__":
