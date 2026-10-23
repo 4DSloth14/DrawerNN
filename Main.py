@@ -18,7 +18,7 @@ output_size = 5
 # the network or calling fit().
 epochs = 2500
 train_until_percent = 95
-learning_rate = 0.005
+learning_rate = 0.001
 batch_size = 64
 random_seed = 42
 early_stopping_patience = 60
