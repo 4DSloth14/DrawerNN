@@ -12,7 +12,7 @@ output_file = "spell_training_data.csv"
 datasets = {
   "circle": "full_simplified_circle.ndjson",
   "star": "full_simplified_star.ndjson",
-  "slash": "full_simplified_line.ndjson",
+  "triangle": "full_simplified_triangle.ndjson",
   "lightning": "full_simplified_lightning.ndjson"
 }
 
