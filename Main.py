@@ -16,7 +16,7 @@ output_size = 5
 
 # These are the default training settings; you can override them when creating
 # the network or calling fit().
-epochs = 1000
+epochs = 2500
 learning_rate = 0.005
 batch_size = 64
 random_seed = 42
