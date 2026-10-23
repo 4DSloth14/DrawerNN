@@ -130,25 +130,16 @@ def main():
       "to provide 'none' examples."
     )
 
-  none_quota, none_remainder = divmod(max_examples_per_class, len(none_files))
-  none_limits = {
-    path: none_quota + (index < none_remainder)
-    for index, path in enumerate(none_files)
-  }
-
   with output_path.open("w", newline="", encoding="utf-8") as csv_file:
     writer = csv.writer(csv_file)
     writer.writerow(["label", *feature_names])
 
     for dataset_path in data_files:
       label = files_by_name.get(dataset_path.name, "none")
-      example_limit = (
-        max_examples_per_class if label != "none" else none_limits[dataset_path]
-      )
       examples_written = 0
       with dataset_path.open(encoding="utf-8") as dataset_file:
         for line_number, line in enumerate(dataset_file, start=1):
-          if examples_written >= example_limit:
+          if examples_written >= max_examples_per_class:
             break
           if not line.strip():
             continue
