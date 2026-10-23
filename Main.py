@@ -10,6 +10,7 @@ import numpy as np
 # Each drawing is represented by 64 numbers: 32 x-coordinates followed by
 # 32 y-coordinates. The output class numbers follow this list's order.
 hidden_layers = [32, 16]
+confidence_threshold = 0.9
 input_size = 64
 output_size = 4
 
@@ -23,8 +24,8 @@ early_stopping_patience = 60
 minimum_loss_improvement = 1e-4
 log_every = 25
 
-# Class number 0 means circle, 1 slash, 2 lightning, and 3 star.
-labels = ["circle", "slash", "lightning", "star"]
+# Class number 0 means circle, 1 triangle, 2 lightning, and 3 star.
+labels = ["circle", "triangle", "lightning", "star"]
 training_data_file = Path(__file__).with_name("spell_training_data.csv")
 model_file = Path(__file__).with_name("spell_model.npz")
 
@@ -143,7 +144,10 @@ class NeuralNetwork:
 
     def save(self, path=model_file):
         """Save the network architecture, weights, and biases to an NPZ file."""
-        arrays = {"layer_sizes": np.asarray(self.layer_sizes, dtype=np.int64)}
+        arrays = {
+            "layer_sizes": np.asarray(self.layer_sizes, dtype=np.int64),
+            "labels": np.asarray(labels, dtype=np.str_),
+        }
         for i, (weight, bias) in enumerate(zip(self.weights, self.biases)):
             arrays[f"weights_{i}"] = weight
             arrays[f"biases_{i}"] = bias
@@ -155,6 +159,15 @@ class NeuralNetwork:
     def load(cls, path=model_file):
         """Load a saved network after checking its architecture and parameters."""
         with np.load(path, allow_pickle=False) as model_data:
+            if "labels" not in model_data or not np.array_equal(
+                model_data["labels"], np.asarray(labels, dtype=np.str_)
+            ):
+                raise ValueError(
+                    f"{path} was trained with different class labels. "
+                    "Regenerate the training data and retrain with "
+                    "'python Main.py --train'."
+                )
+
             layer_sizes = model_data["layer_sizes"]
             if (
                 layer_sizes.ndim != 1
@@ -466,8 +479,14 @@ def predict_from_prompt():
 
     probabilities = model.predict_proba(drawing)[0]
     predicted_class = int(np.argmax(probabilities))
-    print(f"Prediction: {labels[predicted_class]}")
-    print(f"Confidence: {probabilities[predicted_class]:.2%}")
+    confidence = probabilities[predicted_class]
+    prediction = (
+        labels[predicted_class]
+        if confidence >= confidence_threshold
+        else "None"
+    )
+    print(f"Prediction: {prediction}")
+    print(f"Confidence: {confidence:.2%}")
 
 
 def main():
