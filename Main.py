@@ -1,3 +1,6 @@
+import csv
+from pathlib import Path
+
 # NumPy does the fast number and matrix calculations used by the network.
 # From the project folder, install it in this project's VS Code environment with:
 #     ./.venv/bin/python -m pip install numpy
@@ -17,6 +20,7 @@ batch_size = 32
 
 # Class number 0 means circle, 1 slash, 2 lightning, and 3 star.
 labels = ["circle", "slash", "lightning", "star"]
+training_data_file = Path(__file__).with_name("spell_training_data.csv")
 
 
 class NeuralNetwork:
@@ -95,13 +99,15 @@ class NeuralNetwork:
 
         # Work backwards through the network, measuring how each connection
         # affected the error and nudging it to make future predictions better.
+        weight_gradients = [None] * len(self.weights)
+        bias_gradients = [None] * len(self.biases)
         for i in reversed(range(len(self.weights))):
             previous_activation = activations[i]
 
             # These are the adjustments needed for this stage's weights
             # and biases.
-            dW = previous_activation.T @ dz
-            db = np.sum(dz, axis=0, keepdims=True)
+            weight_gradients[i] = previous_activation.T @ dz
+            bias_gradients[i] = np.sum(dz, axis=0, keepdims=True)
 
             if i > 0:
                 # Pass the error back to the previous stage. ReLU blocks error
@@ -109,9 +115,12 @@ class NeuralNetwork:
                 dz = dz @ self.weights[i].T
                 dz *= activations[i] > 0
 
+        # Apply updates only after all gradients are calculated, so every
+        # gradient uses the same pre-update weights.
+        for i in range(len(self.weights)):
             # A small step in the direction that reduces the prediction error.
-            self.weights[i] -= self.learning_rate * dW
-            self.biases[i] -= self.learning_rate * db
+            self.weights[i] -= self.learning_rate * weight_gradients[i]
+            self.biases[i] -= self.learning_rate * bias_gradients[i]
 
     def predict_proba(self, X):
         # Return one probability per class for every drawing.
@@ -173,7 +182,116 @@ class NeuralNetwork:
                 message += f" | Val accuracy: {val_accuracy:.2%}"
 
             print(message)
+
+
+def load_training_data(path=training_data_file):
+    """Read the labeled drawing CSV and return numeric inputs and class IDs."""
+    class_numbers = {label: number for number, label in enumerate(labels)}
+    expected_header = (
+        ["label"]
+        + [f"x{i}" for i in range(input_size // 2)]
+        + [f"y{i}" for i in range(input_size // 2)]
+    )
+    features = []
+    targets = []
+
+    with path.open(newline="", encoding="utf-8") as data_file:
+        reader = csv.reader(data_file)
+        header = next(reader, None)
+        if header != expected_header:
+            raise ValueError(
+                f"{path} has an unexpected CSV header. "
+                "Regenerate it by running quickdraw.py."
+            )
+
+        for line_number, row in enumerate(reader, start=2):
+            if len(row) != input_size + 1:
+                raise ValueError(
+                    f"Expected a label and {input_size} values at "
+                    f"{path}:{line_number}; found {len(row)} columns."
+                )
+
+            label = row[0]
+            if label not in class_numbers:
+                raise ValueError(
+                    f"Unknown label {label!r} at {path}:{line_number}."
+                )
+
+            try:
+                drawing = np.asarray(row[1:], dtype=np.float64)
+            except ValueError as error:
+                raise ValueError(
+                    f"Non-numeric drawing data at {path}:{line_number}."
+                ) from error
+
+            if not np.all(np.isfinite(drawing)):
+                raise ValueError(
+                    f"Non-finite drawing data at {path}:{line_number}."
+                )
+
+            # The CSV coordinates are approximately -100 to 100. Dividing by
+            # 100 gives the network smaller, easier-to-learn input values.
+            features.append(drawing / 100.0)
+            targets.append(class_numbers[label])
+
+    if not features:
+        raise ValueError(f"No training examples were found in {path}.")
+
+    return np.asarray(features), np.asarray(targets, dtype=np.int64)
+
+
+def split_by_class(X, y, validation_fraction=0.2, seed=42):
+    """Make a repeatable train/validation split while retaining every class."""
+    if not 0 < validation_fraction < 1:
+        raise ValueError("validation_fraction must be between 0 and 1.")
+
+    rng = np.random.default_rng(seed)
+    train_indices = []
+    validation_indices = []
+
+    for class_number in range(output_size):
+        class_indices = np.flatnonzero(y == class_number)
+        if len(class_indices) < 2:
+            raise ValueError(
+                f"Need at least two examples of {labels[class_number]} "
+                "to create training and validation sets."
+            )
+
+        rng.shuffle(class_indices)
+        validation_count = min(
+            len(class_indices) - 1,
+            max(1, int(len(class_indices) * validation_fraction)),
+        )
+        validation_indices.extend(class_indices[:validation_count])
+        train_indices.extend(class_indices[validation_count:])
+
+    rng.shuffle(train_indices)
+    rng.shuffle(validation_indices)
+    return (
+        X[train_indices],
+        y[train_indices],
+        X[validation_indices],
+        y[validation_indices],
+    )
+
+
+def main():
+    # Running Main.py loads the prepared drawings and starts training.
+    X, y = load_training_data()
+    train_X, train_y, validation_X, validation_y = split_by_class(X, y)
+
+    print(
+        f"Training on {len(train_y)} drawings; "
+        f"validating on {len(validation_y)} drawings."
+    )
+    model = NeuralNetwork(hidden_layers)
+    model.fit(
+        train_X,
+        train_y,
+        epochs=epochs,
+        validation_data=(validation_X, validation_y),
+    )
+
+
 if __name__ == "__main__":
-    # The class is defined here, but this file does not load a dataset or train
-    # a model by itself. Call fit() with numeric X data and integer class IDs.
-    pass
+    main()
