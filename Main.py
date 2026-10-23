@@ -17,6 +17,7 @@ output_size = 5
 # These are the default training settings; you can override them when creating
 # the network or calling fit().
 epochs = 2500
+train_until_percent = 95
 learning_rate = 0.005
 batch_size = 64
 random_seed = 42
@@ -440,19 +441,49 @@ def parse_input(text):
 def train_and_save_model():
     X, y = load_training_data()
     train_X, train_y, validation_X, validation_y = split_by_class(X, y)
+    if train_until_percent is not None and not 0 <= train_until_percent <= 100:
+        raise ValueError("train_until_percent must be between 0 and 100.")
 
     print(
         f"Training on {len(train_y)} drawings; "
         f"validating on {len(validation_y)} drawings."
     )
     model = NeuralNetwork(hidden_layers, seed=random_seed)
-    model.fit(
-        train_X,
-        train_y,
-        epochs=epochs,
-        validation_data=(validation_X, validation_y),
-        seed=random_seed + 1,
+    target_accuracy = (
+        None if train_until_percent is None else train_until_percent / 100
     )
+    best_accuracy = -1.0
+    best_weights = None
+    best_biases = None
+    attempt = 0
+
+    while True:
+        attempt += 1
+        if target_accuracy is not None:
+            print(f"Training attempt {attempt}; target: {train_until_percent}%.")
+        model.fit(
+            train_X,
+            train_y,
+            epochs=epochs,
+            validation_data=(validation_X, validation_y),
+            seed=random_seed + attempt,
+        )
+        validation_accuracy = model.accuracy(validation_X, validation_y)
+        if validation_accuracy > best_accuracy:
+            best_accuracy = validation_accuracy
+            best_weights = [weight.copy() for weight in model.weights]
+            best_biases = [bias.copy() for bias in model.biases]
+
+        if target_accuracy is None or validation_accuracy >= target_accuracy:
+            break
+
+        model.weights = [weight.copy() for weight in best_weights]
+        model.biases = [bias.copy() for bias in best_biases]
+        print(
+            f"Validation accuracy {validation_accuracy:.2%} is below "
+            f"{train_until_percent}%; repeating training."
+        )
+
     model.save()
     print(f"Saved trained model to {model_file}.")
 
