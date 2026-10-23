@@ -12,7 +12,7 @@ import numpy as np
 hidden_layers = [64, 32]
 confidence_threshold = 0.8
 input_size = 64
-output_size = 4
+output_size = 5
 
 # These are the default training settings; you can override them when creating
 # the network or calling fit().
@@ -24,8 +24,8 @@ early_stopping_patience = 60
 minimum_loss_improvement = 1e-4
 log_every = 25
 
-# Class number 0 means circle, 1 triangle, 2 lightning, and 3 star.
-labels = ["circle", "triangle", "lightning", "star"]
+# Class IDs follow this order; drawings from other datasets use the final class.
+labels = ["circle", "triangle", "lightning", "star", "none"]
 training_data_file = Path(__file__).with_name("spell_training_data.csv")
 model_file = Path(__file__).with_name("spell_model.npz")
 
