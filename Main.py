@@ -13,11 +13,10 @@ labels = ["circle", "slash", "lightning", "star"]
 
 
 class NeuralNetwork:
-    def __init__(self, hidden_layers, learning_rate=0.001, batch_size=32):
-        self.np = np
+    def __init__(self, hidden_layers, learning_rate=0.001, batch_size=32, seed=None):
         self.learning_rate = learning_rate
-        self.natch_size = batch_size
-        self.layer_sizes = [64] + list(hidden_layers) + [4]
+        self.batch_size = batch_size
+        self.layer_sizes = [input_size] + list(hidden_layers) + [output_size]
         rng = np.random.default_rng(seed)
 
         self.weights = []
@@ -32,23 +31,21 @@ class NeuralNetwork:
                 scale = np.sqrt(1.0/fan_in)
 
             self.weights.append(
-                rng.standard_normal((fan_in,fan_out)) * scale
+                rng.standard_normal((fan_in, fan_out)) * scale
             )
-            self.biases.append(
-                rng.standard_normal((1,fan_out))
-            )
+            self.biases.append(np.zeros((1, fan_out)))
 
-    def forward (self, x):
-        activations = [X]
+    def forward(self, x):
+        activations = [x]
         current = x
-        for i in range(len(self.weights)-1)
+        for i in range(len(self.weights) - 1):
             z = current @ self.weights[i] + self.biases[i]
-            current = np.maximum(0,z)
+            current = np.maximum(0, z)
             activations.append(current)
 
         z = current @ self.weights[-1] + self.biases[-1]
 
-        z = z - np.max(z, axis = 1, keepdims=True)
+        z = z - np.max(z, axis=1, keepdims=True)
         exp_z = np.exp(z)
         probabilities = exp_z / np.sum(
             exp_z, axis=1, keepdims=True
@@ -57,49 +54,50 @@ class NeuralNetwork:
         activations.append(probabilities)
         return activations
 
-    def train_batch(self,X,y):
+    def train_batch(self, X, y):
         activations = self.forward(X)
         predictions = activations[-1]
 
         batch_count = X.shape[0]
 
         dz = predictions.copy()
-        dz[np.arrange(batch_count)]
+        dz[np.arange(batch_count), y] -= 1
         dz /= batch_count
-        
+
         for i in reversed(range(len(self.weights))):
-           previous_activation = activations[i]
+            previous_activation = activations[i]
 
-           dW = previous_activation.T @ dz
-           db = np.sum(dz, acis = 0, keepdims=True) 
+            dW = previous_activation.T @ dz
+            db = np.sum(dz, axis=0, keepdims=True)
 
-           if i > 0:
-               dz = dz @ self.weights[i].T
+            if i > 0:
+                dz = dz @ self.weights[i].T
+                dz *= activations[i] > 0
 
-               dz *= (activations[i] > 0)
-               
-           self.weights[i] -= self.learning_rate * dW
-           self.biases[i] -= self.learning_rate * db
-    def predict_proba(self,X):
+            self.weights[i] -= self.learning_rate * dW
+            self.biases[i] -= self.learning_rate * db
+
+    def predict_proba(self, X):
         return self.forward(X)[-1]
 
     def predict(self, X):
-        return np.argmax(self.predict_proba(x), axis = 1)
+        return np.argmax(self.predict_proba(X), axis=1)
 
-    def accuracy(self,X):
-        return np.mean(self.predict(X)==y)
-    def loss(self,X,y):
+    def accuracy(self, X, y):
+        return np.mean(self.predict(X) == y)
+
+    def loss(self, X, y):
         probabilities = self.predict_proba(X)
         correct_probabilities = probabilities[
-            np.arrange(len(y)),y
+            np.arange(len(y)), y
         ]
         return -np.mean(
             np.log(np.clip(correct_probabilities, 1e-12, 1.0))
         )
 
-    def fit (self, X, y, epochs = 100, validation_data = None):
+    def fit(self, X, y, epochs=100, validation_data=None):
         if epochs <= 0:
-            raise ValueError("Positive epoch")
+            raise ValueError("epochs must be positive")
         rng = np.random.default_rng()
         for epoch in range(epochs):
             indices = rng.permutation(len(X))
@@ -124,8 +122,8 @@ class NeuralNetwork:
 
             if validation_data is not None:
                 val_X, val_y = validation_data
-                val_accuracy = self.accuracy(val_X,val_y)
-                message += f" | Val accuracy: {val_accuracy:0.2%}"
+                val_accuracy = self.accuracy(val_X, val_y)
+                message += f" | Val accuracy: {val_accuracy:.2%}"
 
             print(message)
 
