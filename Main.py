@@ -8,15 +8,19 @@ import numpy as np
 
 # Each drawing is represented by 64 numbers: 32 x-coordinates followed by
 # 32 y-coordinates. The output class numbers follow this list's order.
-hidden_layers = [32, 16]
+hidden_layers = [64, 32]
 input_size = 64
 output_size = 4
 
 # These are the default training settings; you can override them when creating
 # the network or calling fit().
-epochs = 50
-learning_rate = 0.001
-batch_size = 32
+epochs = 1000
+learning_rate = 0.005
+batch_size = 64
+random_seed = 42
+early_stopping_patience = 60
+minimum_loss_improvement = 1e-4
+log_every = 25
 
 # Class number 0 means circle, 1 slash, 2 lightning, and 3 star.
 labels = ["circle", "slash", "lightning", "star"]
@@ -31,6 +35,13 @@ class NeuralNetwork:
         batch_size=batch_size,
         seed=None,
     ):
+        if not hidden_layers or any(width <= 0 for width in hidden_layers):
+            raise ValueError("hidden_layers must contain positive layer sizes.")
+        if learning_rate <= 0:
+            raise ValueError("learning_rate must be positive.")
+        if batch_size <= 0:
+            raise ValueError("batch_size must be positive.")
+
         # Store the training settings and the number of numbers at each stage.
         self.learning_rate = learning_rate
         self.batch_size = batch_size
@@ -56,10 +67,12 @@ class NeuralNetwork:
                 scale = np.sqrt(1.0 / fan_in)
 
             self.weights.append(
-                rng.standard_normal((fan_in, fan_out)) * scale
+                rng.standard_normal(
+                    (fan_in, fan_out), dtype=np.float32
+                ) * np.float32(scale)
             )
             # Starting biases at zero gives every class a neutral starting point.
-            self.biases.append(np.zeros((1, fan_out)))
+            self.biases.append(np.zeros((1, fan_out), dtype=np.float32))
 
     def forward(self, x):
         # Keep each stage's outputs because training needs them to work out
@@ -145,12 +158,56 @@ class NeuralNetwork:
             np.log(np.clip(correct_probabilities, 1e-12, 1.0))
         )
 
-    def fit(self, X, y, epochs=epochs, validation_data=None):
+    def fit(
+        self,
+        X,
+        y,
+        epochs=epochs,
+        validation_data=None,
+        patience=early_stopping_patience,
+        min_delta=minimum_loss_improvement,
+        seed=random_seed,
+    ):
         if epochs <= 0:
             raise ValueError("epochs must be positive")
+        if X.ndim != 2 or X.shape[1] != input_size:
+            raise ValueError(f"X must have shape (number_of_examples, {input_size}).")
+        if y.ndim != 1 or len(X) != len(y) or len(y) == 0:
+            raise ValueError("y must contain one class ID for every row in X.")
+        if not np.issubdtype(y.dtype, np.integer):
+            raise ValueError("y must contain integer class IDs.")
+        if np.any((y < 0) | (y >= output_size)):
+            raise ValueError(f"class IDs must be from 0 to {output_size - 1}.")
+        if validation_data is not None:
+            validation_X, validation_y = validation_data
+            if (
+                validation_X.ndim != 2
+                or validation_X.shape[1] != input_size
+                or validation_y.ndim != 1
+                or len(validation_X) != len(validation_y)
+                or len(validation_y) == 0
+            ):
+                raise ValueError("validation_data must contain matching X and y arrays.")
+            if not np.issubdtype(validation_y.dtype, np.integer):
+                raise ValueError("validation labels must be integer class IDs.")
+            if np.any((validation_y < 0) | (validation_y >= output_size)):
+                raise ValueError(
+                    f"validation class IDs must be from 0 to {output_size - 1}."
+                )
+        if patience <= 0:
+            raise ValueError("patience must be positive.")
+        if min_delta < 0:
+            raise ValueError("min_delta cannot be negative.")
+
         # Shuffle the examples each epoch so training does not depend on their
         # original order, then learn from manageable batches.
-        rng = np.random.default_rng()
+        rng = np.random.default_rng(seed)
+        best_validation_loss = float("inf")
+        best_weights = None
+        best_biases = None
+        best_epoch = 0
+        epochs_without_improvement = 0
+
         for epoch in range(epochs):
             indices = rng.permutation(len(X))
             shuffled_X = X[indices]
@@ -164,24 +221,50 @@ class NeuralNetwork:
                     shuffled_y[start:end]
                 )
 
-            # Report progress on the training examples after each full pass.
-            train_loss = self.loss(X, y)
-            train_accuracy = self.accuracy(X, y)
-
-            message = (
-                f"Epoch {epoch + 1}/{epochs} | "
-                f"Loss: {train_loss:.4f} | "
-                f"Accuracy: {train_accuracy:.2%}"
-            )
-
+            # Validation loss tracks how well the network predicts unseen
+            # examples; retain the best version and stop if it stalls.
             if validation_data is not None:
-                # Validation examples measure how well the model handles data
-                # that was not used for the weight updates.
-                val_X, val_y = validation_data
-                val_accuracy = self.accuracy(val_X, val_y)
-                message += f" | Val accuracy: {val_accuracy:.2%}"
+                validation_loss = self.loss(validation_X, validation_y)
+                if validation_loss < best_validation_loss - min_delta:
+                    best_validation_loss = validation_loss
+                    best_weights = [weight.copy() for weight in self.weights]
+                    best_biases = [bias.copy() for bias in self.biases]
+                    best_epoch = epoch + 1
+                    epochs_without_improvement = 0
+                else:
+                    epochs_without_improvement += 1
 
-            print(message)
+            if (epoch + 1) % log_every == 0 or epoch == 0:
+                train_loss = self.loss(X, y)
+                train_accuracy = self.accuracy(X, y)
+                message = (
+                    f"Epoch {epoch + 1}/{epochs} | "
+                    f"Loss: {train_loss:.4f} | "
+                    f"Accuracy: {train_accuracy:.2%}"
+                )
+                if validation_data is not None:
+                    message += (
+                        f" | Val loss: {validation_loss:.4f}"
+                        f" | Val accuracy: "
+                        f"{self.accuracy(validation_X, validation_y):.2%}"
+                    )
+                print(message)
+
+            if (
+                validation_data is not None
+                and epochs_without_improvement >= patience
+            ):
+                print(f"Early stopping after epoch {epoch + 1}.")
+                break
+
+        if best_weights is not None and best_biases is not None:
+            self.weights = best_weights
+            self.biases = best_biases
+            print(
+                f"Restored best model from epoch {best_epoch} "
+                f"(validation loss {best_validation_loss:.4f}, "
+                f"accuracy {self.accuracy(validation_X, validation_y):.2%})."
+            )
 
 
 def load_training_data(path=training_data_file):
@@ -231,13 +314,13 @@ def load_training_data(path=training_data_file):
 
             # The CSV coordinates are approximately -100 to 100. Dividing by
             # 100 gives the network smaller, easier-to-learn input values.
-            features.append(drawing / 100.0)
+            features.append((drawing / 100.0).astype(np.float32))
             targets.append(class_numbers[label])
 
     if not features:
         raise ValueError(f"No training examples were found in {path}.")
 
-    return np.asarray(features), np.asarray(targets, dtype=np.int64)
+    return np.asarray(features, dtype=np.float32), np.asarray(targets, dtype=np.int64)
 
 
 def split_by_class(X, y, validation_fraction=0.2, seed=42):
@@ -284,12 +367,13 @@ def main():
         f"Training on {len(train_y)} drawings; "
         f"validating on {len(validation_y)} drawings."
     )
-    model = NeuralNetwork(hidden_layers)
+    model = NeuralNetwork(hidden_layers, seed=random_seed)
     model.fit(
         train_X,
         train_y,
         epochs=epochs,
         validation_data=(validation_X, validation_y),
+        seed=random_seed + 1,
     )
 
 
