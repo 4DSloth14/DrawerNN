@@ -9,7 +9,7 @@ import numpy as np
 
 # Each drawing is represented by 64 numbers: 32 x-coordinates followed by
 # 32 y-coordinates. The output class numbers follow this list's order.
-hidden_layers = [128, 64]
+hidden_layers = [32,16]
 confidence_threshold = 0.8
 input_size = 64
 output_size = 5
